@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>抽選会</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <h1>抽選会</h1>
+    <p class="subtitle">くるくる回して、役割を決めよう</p>
+  </div>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="draw">抽選会場</button>
+    <button class="tab-btn" data-tab="setup">準備</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ============ 抽選会場 ============ -->
+  <section id="tab-draw" class="tab-panel active">
+
+    <div class="draw-layout">
+
+      <div class="machine-column">
+        <div class="machine" id="machine">
+
+          <canvas class="cage-canvas" id="cageCanvas"></canvas>
+
+          <div class="exit-ball" id="cyclingBall">
+            <span id="cyclingName">?</span>
+          </div>
+        </div>
+
+        <div class="winner-stage" id="winnerStage" aria-live="polite"></div>
+
+        <button id="drawBtn" class="draw-btn" disabled>抽選をまわす</button>
+        <p class="pool-count" id="poolCount">参加者が読み込まれていません</p>
+      </div>
+
+      <div class="items-column">
+        <h2>抽選項目を選ぶ</h2>
+        <ul class="item-list" id="itemList"></ul>
+
+        <div class="results-header">
+          <h2>結果</h2>
+          <button id="exportTextBtn" class="btn-secondary" type="button">結果をテキストで出力</button>
+        </div>
+        <div class="results-board" id="resultsBoard"></div>
+
+        <div class="export-panel" id="exportPanel" hidden>
+          <textarea id="exportTextarea" readonly rows="8"></textarea>
+          <div class="export-actions">
+            <button id="copyResultBtn" type="button" class="btn-secondary">クリップボードにコピー</button>
+            <button id="downloadResultBtn" type="button" class="btn-secondary">テキストファイルをダウンロード</button>
+            <button id="closeExportBtn" type="button" class="btn-secondary">閉じる</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 準備 ============ -->
+  <section id="tab-setup" class="tab-panel">
+
+    <div class="setup-grid">
+
+      <div class="setup-card">
+        <h2>抽選項目（グループ）</h2>
+        <p class="hint">例：Main食組 / 定員 3〜4名 → 人数は1つの数字で指定します（例：4）</p>
+        <form id="itemForm" class="inline-form">
+          <input type="text" id="itemName" placeholder="項目名（例：Main食組）" required />
+          <input type="number" id="itemQuota" placeholder="定員" min="1" required />
+          <button type="submit">追加</button>
+        </form>
+        <ul class="item-edit-list" id="itemChipList"></ul>
+      </div>
+
+      <div class="setup-card">
+        <h2>参加者</h2>
+        <p class="hint">1行に1人ずつ名前を入力してください</p>
+        <form id="participantForm" class="stacked-form">
+          <textarea id="participantNames" rows="6" placeholder="やまだ&#10;たなか&#10;すずき"></textarea>
+          <button type="submit">まとめて追加</button>
+        </form>
+        <ul class="chip-list" id="participantChipList"></ul>
+      </div>
+
+    </div>
+
+    <div class="danger-zone">
+      <h2>リセット</h2>
+      <div class="danger-actions">
+        <button id="resetResultsBtn" class="btn-secondary">抽選結果だけリセット（参加者はそのまま）</button>
+        <button id="resetAllBtn" class="btn-danger">すべてリセット（項目・参加者・結果を全削除）</button>
+      </div>
+    </div>
+
+  </section>
+
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script type="module" src="cage3d.js"></script>
+<script src="app.js" defer></script>
+</body>
+</html>
