@@ -106,7 +106,7 @@ app.delete('/api/items/:id', (req, res) => {
 });
 
 // 抽選を1回実行
-// 「山下」と「諏訪」は必ず同じ抽選項目にする
+// 山下と諏訪は必ず同じ抽選項目になる
 app.post('/api/draw/:itemId', (req, res) => {
   const itemId = Number(req.params.itemId);
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId);
@@ -125,6 +125,7 @@ app.post('/api/draw/:itemId', (req, res) => {
     });
   }
 
+  // 未抽選の参加者
   let remaining = db
     .prepare("SELECT * FROM participants WHERE status = 'remaining'")
     .all();
@@ -135,7 +136,7 @@ app.post('/api/draw/:itemId', (req, res) => {
     });
   }
 
-  // 山下・諏訪を取得
+  // 山下・諏訪の情報
   const yamashita = db
     .prepare("SELECT * FROM participants WHERE name = '山下'")
     .get();
@@ -144,42 +145,105 @@ app.post('/api/draw/:itemId', (req, res) => {
     .prepare("SELECT * FROM participants WHERE name = '諏訪'")
     .get();
 
-  /*
-   * 山下・諏訪のどちらか一方だけが
-   * 先に別項目へ入ることを防ぐ。
-   *
-   * 2人とも未抽選の場合は、
-   * 残り枠が2以上ある項目でのみ抽選対象にする。
-   */
+  // 山下がすでに当選している項目
+  const yamashitaResult = yamashita
+    ? db.prepare(
+        'SELECT * FROM results WHERE participant_id = ?'
+      ).get(yamashita.id)
+    : null;
+
+  // 諏訪がすでに当選している項目
+  const suwaResult = suwa
+    ? db.prepare(
+        'SELECT * FROM results WHERE participant_id = ?'
+      ).get(suwa.id)
+    : null;
+
+  // ------------------------------------------------
+  // 山下が先に当選済みの場合
+  // 諏訪は山下と同じ項目でしか抽選されない
+  // ------------------------------------------------
   if (
+    yamashitaResult &&
+    suwa &&
+    suwa.status === 'remaining' &&
+    yamashitaResult.item_id !== itemId
+  ) {
+    remaining = remaining.filter((p) => p.name !== '諏訪');
+  }
+
+  // ------------------------------------------------
+  // 諏訪が先に当選済みの場合
+  // 山下は諏訪と同じ項目でしか抽選されない
+  // ------------------------------------------------
+  if (
+    suwaResult &&
+    yamashita &&
+    yamashita.status === 'remaining' &&
+    suwaResult.item_id !== itemId
+  ) {
+    remaining = remaining.filter((p) => p.name !== '山下');
+  }
+
+  // ------------------------------------------------
+  // 2人とも未抽選の場合
+  // 残り1枠の項目には山下・諏訪を入れない
+  // ------------------------------------------------
+  const remainingSlots = item.quota - wonCount;
+
+  if (
+    !yamashitaResult &&
+    !suwaResult &&
     yamashita &&
     suwa &&
     yamashita.status === 'remaining' &&
-    suwa.status === 'remaining'
+    suwa.status === 'remaining' &&
+    remainingSlots < 2
   ) {
-    const remainingSlots = item.quota - wonCount;
-
-    // 残り1枠の場合は山下・諏訪を抽選候補から外す
-    if (remainingSlots < 2) {
-      remaining = remaining.filter(
-        (p) => p.name !== '山下' && p.name !== '諏訪'
-      );
-
-      if (remaining.length === 0) {
-        return res.status(400).json({
-          error: '山下・諏訪は同じ項目にするため、この項目の残り1枠には抽選できません'
-        });
-      }
-    }
+    remaining = remaining.filter(
+      (p) => p.name !== '山下' && p.name !== '諏訪'
+    );
   }
 
-  // ランダムに1人選出
-  const winner =
-    remaining[Math.floor(Math.random() * remaining.length)];
+  if (remaining.length === 0) {
+    return res.status(400).json({
+      error: 'この項目で抽選できる参加者がいません'
+    });
+  }
 
+  // ------------------------------------------------
+  // 同じ項目に片方が当選済みで、
+  // この項目が残り1枠なら相方を確定
+  // ------------------------------------------------
+
+  let winner;
+
+  if (
+    yamashitaResult &&
+    yamashitaResult.item_id === itemId &&
+    suwa &&
+    suwa.status === 'remaining' &&
+    remainingSlots === 1
+  ) {
+    winner = suwa;
+
+  } else if (
+    suwaResult &&
+    suwaResult.item_id === itemId &&
+    yamashita &&
+    yamashita.status === 'remaining' &&
+    remainingSlots === 1
+  ) {
+    winner = yamashita;
+
+  } else {
+    // 通常のランダム抽選
+    winner =
+      remaining[Math.floor(Math.random() * remaining.length)];
+  }
+
+  // 当選者は1人だけ登録
   const tx = db.transaction(() => {
-
-    // 通常の当選者を登録
     db.prepare(
       'INSERT INTO results (item_id, participant_id) VALUES (?, ?)'
     ).run(itemId, winner.id);
@@ -187,40 +251,6 @@ app.post('/api/draw/:itemId', (req, res) => {
     db.prepare(
       "UPDATE participants SET status = 'won' WHERE id = ?"
     ).run(winner.id);
-
-    // -----------------------------
-    // 山下が当選 → 諏訪も同じ項目
-    // -----------------------------
-    if (
-      winner.name === '山下' &&
-      suwa &&
-      suwa.status === 'remaining'
-    ) {
-      db.prepare(
-        'INSERT INTO results (item_id, participant_id) VALUES (?, ?)'
-      ).run(itemId, suwa.id);
-
-      db.prepare(
-        "UPDATE participants SET status = 'won' WHERE id = ?"
-      ).run(suwa.id);
-    }
-
-    // -----------------------------
-    // 諏訪が当選 → 山下も同じ項目
-    // -----------------------------
-    if (
-      winner.name === '諏訪' &&
-      yamashita &&
-      yamashita.status === 'remaining'
-    ) {
-      db.prepare(
-        'INSERT INTO results (item_id, participant_id) VALUES (?, ?)'
-      ).run(itemId, yamashita.id);
-
-      db.prepare(
-        "UPDATE participants SET status = 'won' WHERE id = ?"
-      ).run(yamashita.id);
-    }
   });
 
   tx();
